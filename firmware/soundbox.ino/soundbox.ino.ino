@@ -22,20 +22,20 @@ DFPlayer - A Mini MP3 Player For Arduino
 #include "Arduino.h"
 #include "SoftwareSerial.h"
 #include "DFRobotDFPlayerMini.h"
-#include "Button2.h"
-#define LONGCLICK_MS 1000
+#include <OneButton.h>
+
 
 SoftwareSerial mySoftwareSerial(10, 11); // RX, TX
 DFRobotDFPlayerMini myDFPlayer;
 void printDetail(uint8_t type, int value);
 
-Button2 button_next;
-
 const int PIN_VOLUME = A0;
 const int PIN_NEXT = A2;
 const int PIN_LED = 4;
+const int PIN_VCC = A3;
 const int UPDATE_INTERVAL = 100; // update interval in ms
 const int BLINK_INTERVAL = 800; // LED blink interval in ms
+const int BATTERY_INTERVAL = 5000; // interval for measuring battery voltage
 
 // DFPlayer States
 const int DFPLAYER_PLAYING = 1;
@@ -43,7 +43,13 @@ const int DFPLAYER_PAUSED = 2;
 
 bool ledPinState = false;
 int volume = 10;
+int vcc = 0;
 
+OneButton button_next = OneButton(
+  PIN_NEXT, // Input pin for the button
+  true, // Button is active LOW
+  true // Enable internal pull-up resistor
+);
 
 void setup()
 {
@@ -64,10 +70,10 @@ void setup()
   pinMode(PIN_VOLUME, INPUT);
   pinMode(PIN_LED,OUTPUT);
   digitalWrite(PIN_LED,ledPinState);
+  pinMode(PIN_VCC,INPUT);
 
-  button_next.begin(PIN_NEXT,INPUT_PULLUP,true);
-  button_next.setClickHandler(nextSong);
-  button_next.setLongClickHandler(pause);
+  button_next.attachClick(nextSong);
+  button_next.attachLongPressStart(pause);
 
   myDFPlayer.volume(volume);  //Set volume value. From 0 to 30
   myDFPlayer.play(1);  //Play the first mp3
@@ -97,13 +103,35 @@ void loop()
       ledPinState = !ledPinState;
     }
     Serial.println(myDFPlayer.readState()); //read mp3 state
+
+  }
+
+  static unsigned long batteryTimer = millis();
+  if (millis() - batteryTimer > BATTERY_INTERVAL) {
+    analogReference(INTERNAL); 
+    batteryTimer = millis();
+    for(int i=0;i<10;i++){ // do a few samples after change of analog reference
+      analogRead(PIN_VCC);
+      delay(2);
+    }
+    vcc = 0;
+    for(int i=0;i<5;i++){
+      vcc = vcc + map(analogRead(PIN_VCC),0,1023,0,6060);
+    }
+    vcc = vcc / 5;
+    Serial.println(vcc);
+    analogReference(DEFAULT); // set analog reference back to vcc and collect a few samples 
+    for(int i=0;i<10;i++){ // do a few samples after change of analog reference
+      analogRead(PIN_VCC);
+      delay(2);
+    }
   }
 
   if (myDFPlayer.available()) {
     printDetail(myDFPlayer.readType(), myDFPlayer.read()); //Print the detail message from DFPlayer to handle different errors and states.
   }
 
-  button_next.loop();
+  button_next.tick();
 }
 
 void printDetail(uint8_t type, int value){
@@ -161,7 +189,8 @@ void printDetail(uint8_t type, int value){
   }
 }
 
-void nextSong(Button2& b) {
+
+static void nextSong() {
   Serial.println("normal Click!");
   if(myDFPlayer.readState() == DFPLAYER_PLAYING){
     myDFPlayer.next();
@@ -171,7 +200,7 @@ void nextSong(Button2& b) {
   }
 }
 
-void pause(Button2& b) {
+static void pause() {
   Serial.println("long click!");
   myDFPlayer.pause();
   digitalWrite(PIN_LED,LOW);

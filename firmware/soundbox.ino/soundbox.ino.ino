@@ -23,9 +23,11 @@ DFPlayer - A Mini MP3 Player For Arduino
 #include "SoftwareSerial.h"
 #include "DFRobotDFPlayerMini.h"
 #include <OneButton.h>
+#include <SPI.h>
+#include <MFRC522.h>
 
 
-SoftwareSerial mySoftwareSerial(10, 11); // RX, TX
+SoftwareSerial mySoftwareSerial(5, 6); // RX, TX
 DFRobotDFPlayerMini myDFPlayer;
 void printDetail(uint8_t type, int value);
 
@@ -36,6 +38,8 @@ const int PIN_VCC = A3;
 const int UPDATE_INTERVAL = 100; // update interval in ms
 const int BLINK_INTERVAL = 800; // LED blink interval in ms
 const int BATTERY_INTERVAL = 5000; // interval for measuring battery voltage
+const int SS_PIN = 10;
+const int RST_PIN = 9;
 
 // DFPlayer States
 const int DFPLAYER_PLAYING = 1;
@@ -45,11 +49,17 @@ bool ledPinState = false;
 int volume = 10;
 int vcc = 0;
 
+// unsigned long id = 0;
+
+
 OneButton button_next = OneButton(
   PIN_NEXT, // Input pin for the button
   true, // Button is active LOW
   true // Enable internal pull-up resistor
 );
+
+// RFID Reader
+MFRC522 mfrc522(SS_PIN, RST_PIN);   // Create MFRC522 instance
 
 void setup()
 {
@@ -77,6 +87,11 @@ void setup()
 
   myDFPlayer.volume(volume);  //Set volume value. From 0 to 30
   myDFPlayer.play(1);  //Play the first mp3
+
+  SPI.begin();
+  mfrc522.PCD_Init();
+ 	// mfrc522.PCD_DumpVersionToSerial();	// Show details of PCD - MFRC522 Card Reader details
+  Serial.println("ready to read ID...");
 }
 
 void loop()
@@ -102,7 +117,7 @@ void loop()
       digitalWrite(PIN_LED,ledPinState);
       ledPinState = !ledPinState;
     }
-    Serial.println(myDFPlayer.readState()); //read mp3 state
+    // Serial.println(myDFPlayer.readState()); //read mp3 state
 
   }
 
@@ -119,7 +134,7 @@ void loop()
       vcc = vcc + map(analogRead(PIN_VCC),0,1023,0,6060);
     }
     vcc = vcc / 5;
-    Serial.println(vcc);
+    // Serial.println(vcc);
     analogReference(DEFAULT); // set analog reference back to vcc and collect a few samples 
     for(int i=0;i<10;i++){ // do a few samples after change of analog reference
       analogRead(PIN_VCC);
@@ -128,10 +143,29 @@ void loop()
   }
 
   if (myDFPlayer.available()) {
-    printDetail(myDFPlayer.readType(), myDFPlayer.read()); //Print the detail message from DFPlayer to handle different errors and states.
+    // printDetail(myDFPlayer.readType(), myDFPlayer.read()); //Print the detail message from DFPlayer to handle different errors and states.
   }
 
   button_next.tick();
+
+  // Look for new cards
+if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
+    // Combine ID bytes into a single 32-bit integer
+    uint64_t idInt = 0;
+    Serial.print("Card ID: ");
+    for (byte i = 0; i < mfrc522.uid.size; i++) {
+      Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "");
+      Serial.print(mfrc522.uid.uidByte[i], HEX);
+      idInt <<= 8;
+      idInt |= mfrc522.uid.uidByte[i];
+    }
+    Serial.println();
+    // Serial.println((uint32_t)idInt,HEX); // since Serial.println only supports uint32 variables, it is casted on the fly, but the real UID can be larger and sometimes only changes 
+    mfrc522.PICC_HaltA(); // Stop reading
+    if(idInt == 0x04BCF6C2613E80){
+    Serial.println("YES!");
+  }
+  }
 }
 
 void printDetail(uint8_t type, int value){

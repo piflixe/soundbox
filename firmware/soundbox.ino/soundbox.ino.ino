@@ -45,12 +45,17 @@ const int RST_PIN = 9;
 const int DFPLAYER_PLAYING = 1;
 const int DFPLAYER_PAUSED = 2;
 
+// RFID tags
+const uint64_t SONG1 = 0x04BCF6C2613E80;
+const uint64_t SONG2 = 0x04CFF6C2613E80;
+
 bool ledPinState = false;
 int volume = 10;
 int vcc = 0;
 
 // unsigned long id = 0;
-
+uint64_t idInt = 0;
+uint64_t idIntlast = 0; 
 
 OneButton button_next = OneButton(
   PIN_NEXT, // Input pin for the button
@@ -151,7 +156,7 @@ void loop()
   // Look for new cards
 if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
     // Combine ID bytes into a single 32-bit integer
-    uint64_t idInt = 0;
+    idInt = 0;
     Serial.print("Card ID: ");
     for (byte i = 0; i < mfrc522.uid.size; i++) {
       Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "");
@@ -162,9 +167,18 @@ if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
     Serial.println();
     // Serial.println((uint32_t)idInt,HEX); // since Serial.println only supports uint32 variables, it is casted on the fly, but the real UID can be larger and sometimes only changes 
     mfrc522.PICC_HaltA(); // Stop reading
-    if(idInt == 0x04BCF6C2613E80){
-    Serial.println("YES!");
   }
+
+  if(idInt != idIntlast){
+    idIntlast = idInt;
+    if(idInt == SONG1){
+        Serial.println("Song1!");
+        myDFPlayer.play(1);  //Play the first mp3
+    }
+    if(idInt == SONG2){
+       Serial.println("Song1!");
+       myDFPlayer.play(2); 
+    }
   }
 }
 
@@ -238,4 +252,6 @@ static void pause() {
   Serial.println("long click!");
   myDFPlayer.pause();
   digitalWrite(PIN_LED,LOW);
+  idIntlast = 0;
+  idInt = 0; // reset last read id so player will start with any new ID
 }
